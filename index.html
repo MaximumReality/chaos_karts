@@ -9,17 +9,16 @@
   #game-container { position: relative; width: 100vw; height: 100vh; background: linear-gradient(#020a2a, #000); }
   canvas { display: block; width: 100%; height: 100%; }
   
-  /* UI Elements */
-  #ui { position: absolute; top: 10px; width: 100%; display: flex; justify-content: space-around; font-size: 20px; font-weight: bold; text-shadow: 0 0 10px #0ff; }
-  #controls { position: absolute; bottom: 30px; width: 100%; display: flex; justify-content: center; gap: 40px; }
+  #ui { position: absolute; top: 10px; width: 100%; display: flex; justify-content: space-around; font-size: 18px; font-weight: bold; text-shadow: 0 0 10px #0ff; z-index: 10; }
+  #controls { position: absolute; bottom: 30px; width: 100%; display: flex; justify-content: center; gap: 40px; z-index: 10; }
   .btn { width: 80px; height: 80px; background: rgba(255, 255, 255, 0.1); border: 2px solid #0ff; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 30px; color: white; user-select: none; }
   
-  /* Overlay */
   #overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.9); display: flex; flex-direction: column; align-items: center; justify-content: center; z-index: 100; }
-  .title { font-size: 2rem; color: #ff00ff; text-shadow: 0 0 15px #ff00ff; margin-bottom: 20px; }
-  .char-select { display: grid; grid-template-columns: repeat(3, 1fr); gap: 15px; margin-bottom: 20px; }
-  .char-btn { padding: 10px; background: #111; border: 2px solid #444; border-radius: 10px; cursor: pointer; }
+  .title { font-size: 2rem; color: #ff00ff; text-shadow: 0 0 15px #ff00ff; margin-bottom: 10px; }
+  .char-select { display: grid; grid-template-columns: repeat(3, 1fr); gap: 15px; margin: 20px 0; }
+  .char-btn { font-size: 40px; padding: 10px; background: #111; border: 2px solid #444; border-radius: 10px; cursor: pointer; }
   .char-btn.active { border-color: #0ff; box-shadow: 0 0 10px #0ff; }
+  #high-score-msg { font-size: 12px; color: #aaa; margin-top: 10px; }
 </style>
 </head>
 <body>
@@ -27,22 +26,23 @@
 <div id="game-container">
   <div id="ui">
     <div>MPH: <span id="speed">0</span></div>
-    <div>LAP: <span id="lap">1</span></div>
-    <div>🏆: <span id="score">0</span></div>
+    <div>SCORE: <span id="score">0</span></div>
+    <div>BEST: <span id="best">0</span></div>
   </div>
 
   <div id="overlay">
     <div class="title">MAXIMUM <span>KART</span></div>
-    <p>SELECT YOUR RACER</p>
+    <p id="status-msg">SELECT YOUR RACER</p>
     <div class="char-select">
-      <div class="char-btn" onclick="setCar('🏎️')">🏎️</div>
-      <div class="char-btn" onclick="setCar('🚕')">🚕</div>
-      <div class="char-btn" onclick="setCar('🚓')">🚓</div>
-      <div class="char-btn" onclick="setCar('🚔')">🚔</div>
-      <div class="char-btn" onclick="setCar('🚖')">🚖</div>
-      <div class="char-btn" onclick="setCar('🚘')">🚘</div>
+      <div class="char-btn active" onclick="setCar('🏎️', this)">🏎️</div>
+      <div class="char-btn" onclick="setCar('🚕', this)">🚕</div>
+      <div class="char-btn" onclick="setCar('🚓', this)">🚓</div>
+      <div class="char-btn" onclick="setCar('🚔', this)">🚔</div>
+      <div class="char-btn" onclick="setCar('🚖', this)">🚖</div>
+      <div class="char-btn" onclick="setCar('🚘', this)">🚘</div>
     </div>
-    <button class="btn" style="width:150px; border-radius:10px;" onclick="startGame()">START</button>
+    <button class="btn" style="width:150px; border-radius:10px;" onclick="startCountdown()">RACE</button>
+    <div id="high-score-msg"></div>
   </div>
 
   <canvas id="roadCanvas"></canvas>
@@ -56,10 +56,13 @@
 <script>
 const canvas = document.getElementById("roadCanvas");
 const ctx = canvas.getContext("2d");
-let playerX = 0, speed = 0, score = 0, lap = 1, gameActive = false;
+let playerX = 0, speed = 0, score = 0, gameActive = false, countdown = 0;
 let currentCar = '🏎️';
 let roadOffset = 0;
 let obstacles = [];
+let bestScore = localStorage.getItem('kartHS') || 0;
+
+document.getElementById('best').innerText = bestScore;
 
 function resize() {
   canvas.width = window.innerWidth;
@@ -68,19 +71,26 @@ function resize() {
 window.addEventListener("resize", resize);
 resize();
 
-function setCar(emoji) {
+function setCar(emoji, el) {
   currentCar = emoji;
   document.querySelectorAll('.char-btn').forEach(b => b.classList.remove('active'));
-  event.target.classList.add('active');
+  el.classList.add('active');
 }
 
-function startGame() {
+function startCountdown() {
   document.getElementById('overlay').style.display = 'none';
-  gameActive = true;
-  speed = 0;
+  countdown = 3;
   score = 0;
   playerX = 0;
   obstacles = [];
+  
+  const timer = setInterval(() => {
+    countdown--;
+    if (countdown <= -1) {
+      clearInterval(timer);
+      gameActive = true;
+    }
+  }, 800);
 }
 
 // Controls
@@ -88,18 +98,18 @@ let leftPressed = false, rightPressed = false;
 const bLeft = document.getElementById("btnLeft");
 const bRight = document.getElementById("btnRight");
 
-bLeft.ontouchstart = () => leftPressed = true;
+bLeft.ontouchstart = (e) => { e.preventDefault(); leftPressed = true; };
 bLeft.ontouchend = () => leftPressed = false;
-bRight.ontouchstart = () => rightPressed = true;
+bRight.ontouchstart = (e) => { e.preventDefault(); rightPressed = true; };
 bRight.ontouchend = () => rightPressed = false;
 
 function spawnObstacle() {
-  if (Math.random() < 0.05) {
+  if (Math.random() < 0.04) {
     obstacles.push({
-      x: (Math.random() - 0.5) * 2,
+      x: (Math.random() - 0.5) * 2.5,
       y: 0,
-      type: Math.random() > 0.8 ? '🚧' : '🔧',
-      scale: 0.1
+      type: Math.random() > 0.8 ? '🔧' : '🚧',
+      scale: 0.05
     });
   }
 }
@@ -107,25 +117,21 @@ function spawnObstacle() {
 function update() {
   if (!gameActive) return;
 
-  speed = Math.min(120, speed + 0.5);
-  roadOffset += speed * 0.1;
+  speed = Math.min(140, speed + 0.4);
+  roadOffset += speed * 0.15;
   
-  if (leftPressed) playerX -= 0.03;
-  if (rightPressed) playerX += 0.03;
+  if (leftPressed) playerX -= 0.035;
+  if (rightPressed) playerX += 0.035;
   
-  // Boundary check
-  if (Math.abs(playerX) > 0.8) {
-    crash();
-  }
+  if (Math.abs(playerX) > 0.9) crash();
 
   obstacles.forEach((obs, i) => {
-    obs.y += speed * 0.005;
-    obs.scale += 0.01;
+    obs.y += speed * 0.004;
+    obs.scale += 0.012;
     
-    // Collision check
-    if (obs.y > 0.8 && obs.y < 1.0 && Math.abs(obs.x - playerX) < 0.2) {
+    if (obs.y > 0.8 && obs.y < 1.0 && Math.abs((w * 0.5 + (obs.x * w * obs.y)) - (w * 0.5 + (playerX * w * 0.8))) < 60) {
       if (obs.type === '🚧') crash();
-      if (obs.type === '🔧') { score += 50; obstacles.splice(i, 1); }
+      if (obs.type === '🔧') { score += 100; obstacles.splice(i, 1); }
     }
     
     if (obs.y > 1.2) {
@@ -142,55 +148,92 @@ function update() {
 function crash() {
   gameActive = false;
   speed = 0;
-  ctx.font = "100px serif";
-  ctx.fillText("🚑", canvas.width/2 - 50, canvas.height/2);
+  
+  if (score > bestScore) {
+    bestScore = score;
+    localStorage.setItem('kartHS', bestScore);
+    document.getElementById('best').innerText = bestScore;
+  }
+
   setTimeout(() => {
-    alert("ADMITTED TO HOSPITAL 🏥\nFINAL SCORE: " + score);
+    document.getElementById('status-msg').innerText = "ADMITTED TO HOSPITAL 🏥";
+    document.getElementById('high-score-msg').innerText = "LAST RUN: " + score;
     document.getElementById('overlay').style.display = 'flex';
   }, 1000);
 }
 
+let w, h, horizon;
 function draw() {
   ctx.clearRect(0, 0, canvas.width, canvas.height);
-  
-  const w = canvas.width, h = canvas.height;
-  const horizon = h * 0.4;
+  w = canvas.width; h = canvas.height;
+  horizon = h * 0.45;
 
-  // Draw Road
+  // Sky
+  ctx.fillStyle = "#020a2a";
+  ctx.fillRect(0, 0, w, horizon);
+
+  // Grass
+  ctx.fillStyle = "#1a472a";
+  ctx.fillRect(0, horizon, w, h - horizon);
+
+  // Road
   ctx.fillStyle = "#333";
   ctx.beginPath();
-  ctx.moveTo(w * 0.45, horizon);
-  ctx.lineTo(w * 0.55, horizon);
-  ctx.lineTo(w * 0.9, h);
-  ctx.lineTo(w * 0.1, h);
+  ctx.moveTo(w * 0.45, horizon); ctx.lineTo(w * 0.55, horizon);
+  ctx.lineTo(w * 1.2, h); ctx.lineTo(w * -0.2, h);
   ctx.fill();
 
-  // Draw Lines
-  ctx.strokeStyle = "#fff";
-  ctx.setLineDash([20, 20]);
+  // Lines
+  ctx.strokeStyle = "#0ff";
+  ctx.setLineDash([30, 30]);
   ctx.lineDashOffset = -roadOffset;
+  ctx.lineWidth = 4;
   ctx.beginPath();
-  ctx.moveTo(w * 0.5, horizon);
-  ctx.lineTo(w * 0.5, h);
+  ctx.moveTo(w * 0.5, horizon); ctx.lineTo(w * 0.5, h);
   ctx.stroke();
 
-  // Draw Obstacles
+  // Countdown / Lights
+  if (countdown >= 0) {
+    const light = countdown === 2 ? '🔴' : countdown === 1 ? '🟡' : '🟢';
+    ctx.font = "100px serif";
+    ctx.fillText(light, w/2 - 50, horizon - 50);
+  }
+
+  // Crash Animation
+  if (!gameActive && countdown < 0) {
+     ctx.font = "120px serif";
+     ctx.fillText("🚑", w/2 - 60, h/2);
+  }
+
+  // Obstacles
   obstacles.forEach(obs => {
     const screenX = w * 0.5 + (obs.x * w * obs.y);
     const screenY = horizon + (obs.y * (h - horizon));
-    ctx.font = (obs.scale * 50) + "px serif";
-    ctx.fillText(obs.type, screenX, screenY);
+    ctx.font = (obs.scale * 60) + "px serif";
+    ctx.fillText(obs.type, screenX - 20, screenY);
   });
 
-  // Draw Player
+  // Player
   const playerScreenX = w * 0.5 + (playerX * w * 0.8);
-  ctx.font = "80px serif";
-  // Flip logic
+  ctx.font = "100px serif";
   ctx.save();
-  ctx.translate(playerScreenX, h - 100);
-  if (leftPressed) ctx.scale(-1, 1);
-  ctx.fillText(currentCar, -40, 0);
+  ctx.translate(playerScreenX, h - 80);
+  if (leftPressed) {
+    ctx.scale(-1, 1);
+    ctx.fillText(currentCar, -50, 0);
+  } else if (rightPressed) {
+    ctx.fillText(currentCar, -50, 0);
+  } else {
+    // Front view - we use the🚘 as a proxy for front view or just center the emoji
+    ctx.fillText(currentCar, -50, 0);
+  }
   ctx.restore();
+
+  // Trophy for New Record
+  if (score > bestScore && bestScore > 0) {
+    ctx.font = "40px serif";
+    ctx.fillText("🏆 NEW RECORD!", 20, 150);
+  }
 }
 
 function loop() {
