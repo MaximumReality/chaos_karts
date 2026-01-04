@@ -1,172 +1,191 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>MAXIMUM REALITY: CHAOS KARTS</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <style>
-  body { margin: 0; background: #000; color: #0ff; font-family: -apple-system, sans-serif; overflow: hidden; touch-action: none; position: fixed; width: 100%; height: 100%; }
+  body { margin: 0; background: #000; color: #0ff; font-family: sans-serif; overflow: hidden; touch-action: none; position: fixed; width: 100vw; height: 100vh; }
+  canvas { display: block; background: #050510; width: 100%; height: 100%; }
   
-  /* Pin Game to Top */
-  #game-container { position: absolute; top: 0; left: 0; width: 100vw; height: 100vh; background: #000; overflow: hidden; }
-  canvas { display: block; width: 100%; height: 100%; }
+  #ui { position: absolute; top: 15px; width: 100%; display: flex; justify-content: space-around; font-weight: 800; z-index: 10; text-shadow: 0 0 10px #0ff; pointer-events: none; }
   
-  #ui { position: absolute; top: 10px; width: 100%; display: flex; justify-content: space-around; font-weight: 800; z-index: 10; font-size: 14px; text-shadow: 0 0 8px #0ff; }
+  #controls { position: absolute; bottom: 40px; width: 100%; display: flex; justify-content: center; gap: 40px; z-index: 100; }
+  .btn { width: 80px; height: 80px; background: rgba(0, 255, 255, 0.2); border: 3px solid #0ff; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 35px; color: white; -webkit-user-select: none; }
   
-  /* Controls positioned for comfortable thumb reach */
-  #controls { position: absolute; bottom: 50px; width: 100%; display: flex; justify-content: center; gap: 60px; z-index: 100; }
-  .btn { width: 80px; height: 80px; background: rgba(0, 255, 255, 0.15); border: 3px solid #0ff; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 35px; color: white; box-shadow: 0 0 15px rgba(0, 255, 255, 0.3); }
-  
-  #overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.95); display: flex; flex-direction: column; align-items: center; justify-content: center; z-index: 200; }
+  #overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.9); display: flex; flex-direction: column; align-items: center; justify-content: center; z-index: 200; }
+  .char-select { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin: 20px 0; }
+  .char-btn { font-size: 30px; padding: 10px; background: #111; border: 2px solid #444; border-radius: 10px; }
+  .char-btn.active { border-color: #ff00ff; box-shadow: 0 0 15px #ff00ff; }
 </style>
+</head>
+<body>
+
+<div id="ui">
+  <div>MPH: <span id="speed">0</span></div>
+  <div>SCORE: <span id="score">0</span></div>
+</div>
+
+<div id="overlay">
+  <h1 style="color:#ff00ff; margin:0;">CHAOS KARTS</h1>
+  <p>CHOOSE UNIT</p>
+  <div class="char-select">
+    <div class="char-btn active" onclick="setCar('🚘','🏎️', this)">🚘</div>
+    <div class="char-btn" onclick="setCar('🚖','🚕', this)">🚖</div>
+    <div class="char-btn" onclick="setCar('🚔','🚓', this)">🚔</div>
+  </div>
+  <button class="btn" style="width:140px; border-radius:15px;" onclick="startCountdown()">START</button>
+</div>
+
+<canvas id="roadCanvas"></canvas>
+
+<div id="controls">
+  <div id="btnLeft" class="btn">⬅️</div>
+  <div id="btnRight" class="btn">➡️</div>
+</div>
 
 <script>
 const canvas = document.getElementById("roadCanvas");
 const ctx = canvas.getContext("2d");
+let w, h, hz;
+
+// Game State
 let playerX = 0, speed = 0, score = 0, gameActive = false, countdown = -1;
 let roadOffset = 0, obstacles = [], npcPasser = { active: false, x: 0, y: 0, scale: 0.1 };
 let isSlowMo = false, isSpinning = false, spinAngle = 0, powerupTimer = 0;
 let frontEmoji = '🚘', sideEmoji = '🏎️';
 
-// Load Assets
-const imgAzul = new Image(); imgAzul.src = 'azul_front_kart.png';
-const imgMochkil = new Image(); imgMochkil.src = 'mochkil_front_kart.png';
-const imgPass = new Image(); imgPass.src = 'azul_mochkil_pass.png';
-
-function resize() { 
-    canvas.width = window.innerWidth; 
-    canvas.height = window.innerHeight; 
+// Image Loading with Error Handling
+function createImg(src) {
+    const img = new Image();
+    img.src = src;
+    img.onerror = () => console.log("Failed to load: " + src);
+    return img;
 }
-window.addEventListener("resize", resize); resize();
+const imgAzul = createImg('azul_front_kart.png');
+const imgMochkil = createImg('mochkil_front_kart.png');
+const imgPass = createImg('azul_mochkil_pass.png');
 
-function setCar(front, side, el) {
-  frontEmoji = front; sideEmoji = side;
+function resize() {
+  w = canvas.width = window.innerWidth;
+  h = canvas.height = window.innerHeight;
+  hz = h * 0.4; // Horizon position
+}
+window.addEventListener("resize", resize);
+resize();
+
+function setCar(f, s, el) {
+  frontEmoji = f; sideEmoji = s;
   document.querySelectorAll('.char-btn').forEach(b => b.classList.remove('active'));
   el.classList.add('active');
 }
 
 function startCountdown() {
   document.getElementById('overlay').style.display = 'none';
-  countdown = 3; score = 0; playerX = 0; obstacles = []; speed = 0;
+  countdown = 3; speed = 0; playerX = 0; obstacles = []; score = 0;
   const timer = setInterval(() => {
     countdown--;
     if (countdown < 0) { 
-        clearInterval(timer); 
-        gameActive = true; 
-        speed = 30; // STARTING KICK: This ensures the car actually moves!
+      clearInterval(timer); 
+      gameActive = true; 
+      speed = 40; // Immediate speed kick
     }
   }, 800);
 }
 
-// Fixed Touch Handling
+// Controls
 let leftP = false, rightP = false;
 const bl = document.getElementById("btnLeft"), br = document.getElementById("btnRight");
+const touchStart = (side) => (e) => { e.preventDefault(); if(side==='L') leftP=true; else rightP=true; };
+const touchEnd = (side) => (e) => { if(side==='L') leftP=false; else rightP=false; };
 
-bl.addEventListener('touchstart', (e) => { e.preventDefault(); leftP = true; }, {passive: false});
-bl.addEventListener('touchend', () => { leftP = false; });
-br.addEventListener('touchstart', (e) => { e.preventDefault(); rightP = true; }, {passive: false});
-br.addEventListener('touchend', () => { rightP = false; });
+bl.addEventListener('touchstart', touchStart('L'), {passive:false});
+bl.addEventListener('touchend', touchEnd('L'));
+br.addEventListener('touchstart', touchStart('R'), {passive:false});
+br.addEventListener('touchend', touchEnd('R'));
 
 function update() {
   if (!gameActive) return;
-  
+
   let frameSpeed = isSlowMo ? 0.3 : 1;
-  
-  // Acceleration Logic
-  const maxSpeed = powerupTimer > 0 ? 250 : 150;
-  if (speed < maxSpeed) speed += 0.5;
+  const maxS = powerupTimer > 0 ? 250 : 150;
+  if (speed < maxS) speed += 0.5;
   
   roadOffset += speed * 0.2 * frameSpeed;
-  
-  // Movement
   if (leftP) playerX -= 0.05 * frameSpeed; 
   if (rightP) playerX += 0.05 * frameSpeed;
-  
-  // Grass Friction (If you hit the sides, you slow down)
-  if (Math.abs(playerX) > 0.8) speed *= 0.98;
-  if (Math.abs(playerX) > 1.2) crash();
 
-  // NPCs (Azul/Mochkil zoom past)
-  if (score > 0 && score % 500 === 0 && !npcPasser.active) {
-    npcPasser.active = true; npcPasser.y = 0; npcPasser.x = (Math.random() - 0.5) * 1.5; npcPasser.scale = 0.05;
-  }
+  // Obstacles
+  obstacles.forEach((o, i) => {
+    o.y += speed * 0.006 * frameSpeed;
+    o.scale += 0.012 * frameSpeed;
+    
+    // Collision
+    const ox = w*0.5 + (o.x*w*o.y);
+    const px = w*0.5 + (playerX*w*0.8);
+    if (o.y > 0.8 && o.y < 0.95 && Math.abs(ox - px) < 60) {
+      if (o.type === '🚧') {
+          if (speed > 110) { isSlowMo = true; setTimeout(()=>isSlowMo=false, 1000); obstacles.splice(i,1); }
+          else { gameActive = false; setTimeout(()=>document.getElementById('overlay').style.display='flex', 1000); }
+      } else if (o.type === '🍌') { isSpinning=true; speed*=0.5; setTimeout(()=>{isSpinning=false; spinAngle=0;}, 800); obstacles.splice(i,1);
+      } else if (o.type === '🚀') { powerupTimer=150; speed+=60; obstacles.splice(i,1);
+      } else if (o.type === '🧨') { obstacles = obstacles.filter(x=>x.type!=='🚧'); score+=300; obstacles.splice(i,1); }
+    }
+    if (o.y > 1.3) { obstacles.splice(i,1); score += 10; }
+  });
+
+  if (Math.random() < 0.05) obstacles.push({x:(Math.random()-0.5)*2.5, y:0, type: ['🚧','🚧','🍌','🚀','🧨','🔧'][Math.floor(Math.random()*6)], scale:0.05});
+  if (powerupTimer > 0) powerupTimer--;
   
+  // NPC Rivals
+  if (score > 0 && score % 500 === 0 && !npcPasser.active) {
+    npcPasser.active = true; npcPasser.y = 0; npcPasser.x = (Math.random()-0.5)*1.5; npcPasser.scale = 0.05;
+  }
   if (npcPasser.active) {
-    npcPasser.y += (speed * 0.008 + 1) * frameSpeed; 
-    npcPasser.scale += 0.015 * frameSpeed;
+    npcPasser.y += (speed * 0.01) * frameSpeed;
+    npcPasser.scale += 0.015;
     if (npcPasser.y > 1.5) npcPasser.active = false;
   }
 
-  // Obstacle handling
-  obstacles.forEach((o, i) => {
-    o.y += speed * 0.006 * frameSpeed; 
-    o.scale += 0.012 * frameSpeed;
-    
-    // Collision box
-    const ox = canvas.width*0.5 + (o.x*canvas.width*o.y);
-    const px = canvas.width*0.5 + (playerX*canvas.width*0.8);
-    
-    if (o.y > 0.75 && o.y < 0.95 && Math.abs(ox - px) < 50) {
-      if (o.type === '🚧') {
-          if (speed > 100) { isSlowMo = true; setTimeout(()=>isSlowMo=false, 1000); obstacles.splice(i,1); }
-          else crash();
-      }
-      else if (o.type === '🔧') { score += 100; obstacles.splice(i, 1); }
-      else if (o.type === '🍌') { isSpinning = true; speed *= 0.4; setTimeout(()=>{isSpinning=false; spinAngle=0;}, 800); obstacles.splice(i,1); }
-      else if (o.type === '🚀') { powerupTimer = 150; speed += 50; obstacles.splice(i,1); }
-      else if (o.type === '🧨') { obstacles = obstacles.filter(x => x.type !== '🚧'); score += 300; obstacles.splice(i,1); }
-    }
-    if (o.y > 1.3) { obstacles.splice(i, 1); score += 10; }
-  });
-
-  if (Math.random() < 0.04) {
-    const types = ['🚧','🚧','🔧','🍌','🚀','🧨'];
-    obstacles.push({x:(Math.random()-0.6)*2, y:0, type: types[Math.floor(Math.random()*6)], scale:0.05});
-  }
-  
-  if (powerupTimer > 0) powerupTimer--;
   document.getElementById('speed').innerText = Math.floor(speed);
   document.getElementById('score').innerText = score;
 }
 
-function crash() {
-  gameActive = false;
-  speed = 0;
-  if (score > (localStorage.getItem('kartHS')||0)) localStorage.setItem('kartHS', score);
-  setTimeout(() => { document.getElementById('overlay').style.display = 'flex'; }, 1500);
-}
-
 function draw() {
-  const w = canvas.width, h = canvas.height, hz = h * 0.35; // MOVED TOP
-  ctx.clearRect(0,0,w,h);
+  ctx.fillStyle = "#050510"; ctx.fillRect(0,0,w,h); // Background
 
-  // Road drawing
+  // Road
   ctx.fillStyle = "#111"; ctx.beginPath();
   ctx.moveTo(w*0.48, hz); ctx.lineTo(w*0.52, hz);
   ctx.lineTo(w*1.5, h); ctx.lineTo(w*-0.5, h); ctx.fill();
 
-  // Center Line
-  ctx.strokeStyle = powerupTimer > 0 ? "#ff00ff" : "#0ff"; 
-  ctx.setLineDash([30,30]); ctx.lineDashOffset = -roadOffset;
+  // Line
+  ctx.strokeStyle = powerupTimer > 0 ? "#f0f" : "#0ff";
+  ctx.setLineDash([40,40]); ctx.lineDashOffset = -roadOffset;
   ctx.lineWidth = 6; ctx.beginPath(); ctx.moveTo(w*0.5, hz); ctx.lineTo(w*0.5, h); ctx.stroke();
 
-  // Rivals Start
+  // Rivals
   if (countdown >= 0) {
-    ctx.drawImage(imgAzul, w*0.25, h-180, 110, 110);
-    ctx.drawImage(imgMochkil, w*0.65, h-180, 110, 110);
-    const light = ['🟢','🟡','🔴'][countdown-1] || '🟢';
-    ctx.font = "80px serif"; ctx.fillText(light, w/2-40, hz+100);
+    if (imgAzul.complete) ctx.drawImage(imgAzul, w*0.2, h-180, 100, 100);
+    if (imgMochkil.complete) ctx.drawImage(imgMochkil, w*0.7, h-180, 100, 100);
+    ctx.font = "80px serif"; ctx.fillText(['🟢','🟡','🔴'][countdown-1]||'🟢', w/2-40, hz+100);
   }
 
-  // Draw Obstacles
+  // Draw Items
   obstacles.forEach(o => {
     const ox = w*0.5 + (o.x*w*o.y); const oy = hz + (o.y*(h-hz));
-    ctx.font = (o.scale*70)+"px serif"; ctx.fillText(o.type, ox-20, oy);
+    ctx.font = (o.scale*70)+"px serif"; ctx.fillText(o.type, ox-25, oy);
   });
 
-  // Rivals Passing
-  if (npcPasser.active) {
+  // NPC Passing
+  if (npcPasser.active && imgPass.complete) {
     const nx = w*0.5 + (npcPasser.x*w*npcPasser.y); const ny = hz + (npcPasser.y*(h-hz));
-    const ns = npcPasser.scale * 160; ctx.drawImage(imgPass, nx-(ns/2), ny-ns, ns, ns);
+    const ns = npcPasser.scale * 150; ctx.drawImage(imgPass, nx-(ns/2), ny-ns, ns, ns);
   }
 
   // Player
   const px = w*0.5 + (playerX*w*0.8);
-  ctx.save(); ctx.translate(px, h-110);
+  ctx.save(); ctx.translate(px, h-100);
   if (isSpinning) { spinAngle += 0.5; ctx.rotate(spinAngle); }
   ctx.font = "100px serif";
   if (leftP) { ctx.scale(-1, 1); ctx.fillText(sideEmoji, -50, 0); }
@@ -175,8 +194,15 @@ function draw() {
   if (powerupTimer > 0) ctx.fillText('🔥', -40, 60);
   ctx.restore();
 
-  if (!gameActive && countdown < 0) { ctx.font="100px serif"; ctx.fillText("🚑", w/2-50, h/2); }
-  requestAnimationFrame(draw);
+  if (isSlowMo) { ctx.fillStyle = "rgba(0,255,255,0.15)"; ctx.fillRect(0,0,w,h); }
 }
-draw();
+
+function loop() {
+  update();
+  draw();
+  requestAnimationFrame(loop);
+}
+loop();
 </script>
+</body>
+</html>
