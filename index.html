@@ -1,0 +1,204 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>MAXIMUM REALITY: KART CIRCUIT</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<style>
+  body { margin: 0; background: #000; color: #0ff; font-family: 'Courier New', Courier, monospace; overflow: hidden; touch-action: none; text-align: center; }
+  #game-container { position: relative; width: 100vw; height: 100vh; background: linear-gradient(#020a2a, #000); }
+  canvas { display: block; width: 100%; height: 100%; }
+  
+  /* UI Elements */
+  #ui { position: absolute; top: 10px; width: 100%; display: flex; justify-content: space-around; font-size: 20px; font-weight: bold; text-shadow: 0 0 10px #0ff; }
+  #controls { position: absolute; bottom: 30px; width: 100%; display: flex; justify-content: center; gap: 40px; }
+  .btn { width: 80px; height: 80px; background: rgba(255, 255, 255, 0.1); border: 2px solid #0ff; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 30px; color: white; user-select: none; }
+  
+  /* Overlay */
+  #overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.9); display: flex; flex-direction: column; align-items: center; justify-content: center; z-index: 100; }
+  .title { font-size: 2rem; color: #ff00ff; text-shadow: 0 0 15px #ff00ff; margin-bottom: 20px; }
+  .char-select { display: grid; grid-template-columns: repeat(3, 1fr); gap: 15px; margin-bottom: 20px; }
+  .char-btn { padding: 10px; background: #111; border: 2px solid #444; border-radius: 10px; cursor: pointer; }
+  .char-btn.active { border-color: #0ff; box-shadow: 0 0 10px #0ff; }
+</style>
+</head>
+<body>
+
+<div id="game-container">
+  <div id="ui">
+    <div>MPH: <span id="speed">0</span></div>
+    <div>LAP: <span id="lap">1</span></div>
+    <div>🏆: <span id="score">0</span></div>
+  </div>
+
+  <div id="overlay">
+    <div class="title">MAXIMUM <span>KART</span></div>
+    <p>SELECT YOUR RACER</p>
+    <div class="char-select">
+      <div class="char-btn" onclick="setCar('🏎️')">🏎️</div>
+      <div class="char-btn" onclick="setCar('🚕')">🚕</div>
+      <div class="char-btn" onclick="setCar('🚓')">🚓</div>
+      <div class="char-btn" onclick="setCar('🚔')">🚔</div>
+      <div class="char-btn" onclick="setCar('🚖')">🚖</div>
+      <div class="char-btn" onclick="setCar('🚘')">🚘</div>
+    </div>
+    <button class="btn" style="width:150px; border-radius:10px;" onclick="startGame()">START</button>
+  </div>
+
+  <canvas id="roadCanvas"></canvas>
+
+  <div id="controls">
+    <div class="btn" id="btnLeft">⬅️</div>
+    <div class="btn" id="btnRight">➡️</div>
+  </div>
+</div>
+
+<script>
+const canvas = document.getElementById("roadCanvas");
+const ctx = canvas.getContext("2d");
+let playerX = 0, speed = 0, score = 0, lap = 1, gameActive = false;
+let currentCar = '🏎️';
+let roadOffset = 0;
+let obstacles = [];
+
+function resize() {
+  canvas.width = window.innerWidth;
+  canvas.height = window.innerHeight;
+}
+window.addEventListener("resize", resize);
+resize();
+
+function setCar(emoji) {
+  currentCar = emoji;
+  document.querySelectorAll('.char-btn').forEach(b => b.classList.remove('active'));
+  event.target.classList.add('active');
+}
+
+function startGame() {
+  document.getElementById('overlay').style.display = 'none';
+  gameActive = true;
+  speed = 0;
+  score = 0;
+  playerX = 0;
+  obstacles = [];
+}
+
+// Controls
+let leftPressed = false, rightPressed = false;
+const bLeft = document.getElementById("btnLeft");
+const bRight = document.getElementById("btnRight");
+
+bLeft.ontouchstart = () => leftPressed = true;
+bLeft.ontouchend = () => leftPressed = false;
+bRight.ontouchstart = () => rightPressed = true;
+bRight.ontouchend = () => rightPressed = false;
+
+function spawnObstacle() {
+  if (Math.random() < 0.05) {
+    obstacles.push({
+      x: (Math.random() - 0.5) * 2,
+      y: 0,
+      type: Math.random() > 0.8 ? '🚧' : '🔧',
+      scale: 0.1
+    });
+  }
+}
+
+function update() {
+  if (!gameActive) return;
+
+  speed = Math.min(120, speed + 0.5);
+  roadOffset += speed * 0.1;
+  
+  if (leftPressed) playerX -= 0.03;
+  if (rightPressed) playerX += 0.03;
+  
+  // Boundary check
+  if (Math.abs(playerX) > 0.8) {
+    crash();
+  }
+
+  obstacles.forEach((obs, i) => {
+    obs.y += speed * 0.005;
+    obs.scale += 0.01;
+    
+    // Collision check
+    if (obs.y > 0.8 && obs.y < 1.0 && Math.abs(obs.x - playerX) < 0.2) {
+      if (obs.type === '🚧') crash();
+      if (obs.type === '🔧') { score += 50; obstacles.splice(i, 1); }
+    }
+    
+    if (obs.y > 1.2) {
+      obstacles.splice(i, 1);
+      score += 10;
+    }
+  });
+
+  spawnObstacle();
+  document.getElementById('speed').innerText = Math.floor(speed);
+  document.getElementById('score').innerText = score;
+}
+
+function crash() {
+  gameActive = false;
+  speed = 0;
+  ctx.font = "100px serif";
+  ctx.fillText("🚑", canvas.width/2 - 50, canvas.height/2);
+  setTimeout(() => {
+    alert("ADMITTED TO HOSPITAL 🏥\nFINAL SCORE: " + score);
+    document.getElementById('overlay').style.display = 'flex';
+  }, 1000);
+}
+
+function draw() {
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  
+  const w = canvas.width, h = canvas.height;
+  const horizon = h * 0.4;
+
+  // Draw Road
+  ctx.fillStyle = "#333";
+  ctx.beginPath();
+  ctx.moveTo(w * 0.45, horizon);
+  ctx.lineTo(w * 0.55, horizon);
+  ctx.lineTo(w * 0.9, h);
+  ctx.lineTo(w * 0.1, h);
+  ctx.fill();
+
+  // Draw Lines
+  ctx.strokeStyle = "#fff";
+  ctx.setLineDash([20, 20]);
+  ctx.lineDashOffset = -roadOffset;
+  ctx.beginPath();
+  ctx.moveTo(w * 0.5, horizon);
+  ctx.lineTo(w * 0.5, h);
+  ctx.stroke();
+
+  // Draw Obstacles
+  obstacles.forEach(obs => {
+    const screenX = w * 0.5 + (obs.x * w * obs.y);
+    const screenY = horizon + (obs.y * (h - horizon));
+    ctx.font = (obs.scale * 50) + "px serif";
+    ctx.fillText(obs.type, screenX, screenY);
+  });
+
+  // Draw Player
+  const playerScreenX = w * 0.5 + (playerX * w * 0.8);
+  ctx.font = "80px serif";
+  // Flip logic
+  ctx.save();
+  ctx.translate(playerScreenX, h - 100);
+  if (leftPressed) ctx.scale(-1, 1);
+  ctx.fillText(currentCar, -40, 0);
+  ctx.restore();
+}
+
+function loop() {
+  update();
+  draw();
+  requestAnimationFrame(loop);
+}
+loop();
+</script>
+</body>
+</html>
